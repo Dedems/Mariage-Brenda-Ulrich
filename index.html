@@ -965,42 +965,43 @@
   var SC_URL='https://soundcloud.com/paulhankinsoncovers/a-thousand-years-violin-piano';
   var fab=document.getElementById('musicFab');
   if(!fab) return;
-  var widget=null, ready=false, started=false, apiLoading=false;
+  var widget=null, ready=false, created=false, wantPlay=false;
   function setUI(p){ if(p){fab.classList.add('playing');fab.setAttribute('aria-pressed','true');fab.setAttribute('aria-label','Couper la musique');} else {fab.classList.remove('playing');fab.setAttribute('aria-pressed','false');fab.setAttribute('aria-label','Activer la musique');} }
-  function loadAPI(cb){
-    if(window.SC && window.SC.Widget){cb();return;}
-    if(apiLoading){ var t=setInterval(function(){ if(window.SC&&window.SC.Widget){clearInterval(t);cb();} },120); return; }
-    apiLoading=true;
-    var s=document.createElement('script'); s.src='https://w.soundcloud.com/player/api.js'; s.onload=cb; document.head.appendChild(s);
-  }
-  function init(){
-    if(started) return; started=true;
+  function ensureWidget(){
+    if(created) return; created=true;
     var ifr=document.createElement('iframe');
     ifr.id='scPlayer'; ifr.className='sc-hidden'; ifr.title='Musique'; ifr.allow='autoplay';
-    ifr.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(SC_URL)+'&auto_play=true&visual=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&buying=false&sharing=false&download=false&single_active=true';
+    ifr.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(SC_URL)+'&auto_play=false&visual=false&hide_related=true&show_comments=false&show_user=false&show_reposts=false&buying=false&sharing=false&download=false&single_active=true';
     document.body.appendChild(ifr);
-    setUI(true);
-    loadAPI(function(){
+    function boot(){
       try{
         widget=window.SC.Widget(ifr);
         widget.bind(window.SC.Widget.Events.READY, function(){
-          ready=true;
-          widget.setVolume(35);
-          widget.play();
-          widget.bind(window.SC.Widget.Events.FINISH, function(){ widget.seekTo(0); widget.play(); });
+          ready=true; try{widget.setVolume(35);}catch(e){}
+          widget.bind(window.SC.Widget.Events.FINISH, function(){ try{widget.seekTo(0); widget.play();}catch(e){} });
           widget.bind(window.SC.Widget.Events.PLAY, function(){ setUI(true); });
           widget.bind(window.SC.Widget.Events.PAUSE, function(){ setUI(false); });
+          if(wantPlay){ try{widget.play();}catch(e){} }
         });
       }catch(e){}
-    });
+    }
+    if(window.SC && window.SC.Widget){ boot(); }
+    else { var s=document.createElement('script'); s.src='https://w.soundcloud.com/player/api.js'; s.onload=boot; document.head.appendChild(s); }
   }
-  function onGesture(){ init(); cleanup(); }
-  function cleanup(){ ['scroll','touchstart','pointerdown','keydown'].forEach(function(ev){ window.removeEventListener(ev,onGesture,true); }); }
-  ['scroll','touchstart','pointerdown','keydown'].forEach(function(ev){ window.addEventListener(ev,onGesture,{passive:true,capture:true}); });
+  function startPlay(){ wantPlay=true; if(ready && widget){ try{widget.play();}catch(e){} } else { ensureWidget(); } }
+  // pre-load the player shortly after load so a single tap is enough
+  function preload(){ ensureWidget(); }
+  if(document.readyState==='complete'){ setTimeout(preload,1000); } else { window.addEventListener('load', function(){ setTimeout(preload,1000); }); }
+  // auto-start on first gesture (ignore taps on the music button itself)
+  var autoDone=false;
+  function autoStart(e){ if(autoDone) return; if(e&&e.target&&e.target.closest&&e.target.closest('#musicFab')) return; autoDone=true; startPlay(); rm(); }
+  function rm(){ ['pointerdown','touchstart','keydown','scroll'].forEach(function(ev){ window.removeEventListener(ev,autoStart,true); }); }
+  ['pointerdown','touchstart','keydown','scroll'].forEach(function(ev){ window.addEventListener(ev,autoStart,{passive:true,capture:true}); });
+  // button : reliable single-tap toggle
   fab.addEventListener('click', function(e){
-    e.stopPropagation();
-    if(!started){ init(); return; }
-    if(ready && widget){ widget.isPaused(function(p){ if(p){widget.play();} else {widget.pause();} }); }
+    e.stopPropagation(); autoDone=true; rm();
+    if(ready && widget){ widget.isPaused(function(p){ if(p){ try{widget.play();}catch(e){} } else { try{widget.pause();}catch(e){} } }); }
+    else { startPlay(); }
   });
 })();
 </script>
